@@ -8,9 +8,13 @@ $(function() {
     var elInput         = '[data-fileupload-input]';
     var elDndZone       = '[data-fileupload-dnd]';
     var elPreview       = '[data-fileupload-preview]';
-    var elGlobalProgressBar   = '[data-fileupload-globalprogress]';
 
-
+    /**
+     * File upload component
+     * jQuery File Upload API documentation:
+     * https://github.com/blueimp/jQuery-File-Upload/wiki/API
+     * @constructor
+     */
     HIP.FileUpload = function($el) {
         this.$el = $el;
         this.init();
@@ -18,25 +22,31 @@ $(function() {
 
     HIP.FileUpload.prototype = {
 
+        MAX_FILES: 5,
+        MAX_FILESIZE_BYTES: 1000000,
+
         uploadUrl: '/upload',
-        deleteUrl: '/uploaded/files/',
+        deleteUrl: '/uploaded/files',
 
         $input: null,
-        $preview: null,
         $dndZone: null,
-        $globalProgressBar: null,
+        $uploadedItems: null,
 
-        counter: 0,
+        /**
+         * Models of promise objects which represent files. Standard promise
+         * utilities such as done, fail, always etc can be used directly on
+         * each item
+         * @type {Array.<Promise>}
+         */
+        model: [],
+
 
         init: function() {
             this.$input = this.$el.find(elInput);
-            this.$preview = this.$el.find(elPreview);
             this.$dndZone = this.$el.find(elDndZone);
-            this.$globalProgressBar = this.$el.find(elGlobalProgressBar);
+            this.$uploadedItems = this.$el.find(elPreview);
 
-            this.initPlugin();
-            this.initPluginEvents();
-
+            this.initPlugin().initEvents();
         },
 
         initPlugin: function() {
@@ -49,127 +59,142 @@ $(function() {
                 singleFileUploads: false,
                 progressInterval: 1,
                 bitrateInterval: 1,
-                sequentialUploads: true,
-                paramName: 'files[]'
-            }).prop('disabled', !$.support.fileInput);
-        },
+                sequentialUploads: false,   // ? maybe this should be true?
+                paramName: 'files[]',
+                // The add callback is invoked as soon as files are added to the fileupload
+                // widget (via file input selection, drag & drop or add API call).
+                add: function(e, data) {
+                    e.preventDefault();
+                    $.each(data.files, function(idx, file) {
 
-        initPluginEvents: function() {
-            // I am a user interacting with the file input button
-            this.$input.bind('fileuploadchange', $.proxy(this.onFileuploadchange, this));
-            // I am a user interacting with the DND
-            // https://github.com/blueimp/jQuery-File-Upload/wiki/Drop-zone-effects
-            this.$input.bind('fileuploaddragover', $.proxy(this.onFileuploaddragover, this));
-            this.$input.bind('fileuploaddragleave', $.proxy(this.onFileuploaddragleave, this));
-            this.$input.bind('fileuploaddrop', $.proxy(this.onFileuploaddrop, this));
+                        self.validate(file).fail(function(msg) {
+                            self.fileValidationErrorHandler(msg);
+                        }).then(function(file) {
+                            file.uploadID = self.model.length + 1;
+                            // adding any other metadata we want to send with the request
+                            file.user = {
+                                id: Math.ceil(Math.random() * 1000000),
+                                name: 'Mickey Mouse'
+                            };
+                            // store the promise object of the created file
+                            // and tell the API to consume the file as an uploaded files group
+                            // this way upload groups will only ever have one item
+                            self.model.push(
+                                self.$input.fileupload('send', { files:file })
+                            );
+                        });
+                    });
+                },
+                // Callback for the start of each file upload request
+                send: function(e, data) {
+                    data.context = $($.proxy(self.renderItem, self, e, data));
+                },
+                progress: function(e, data) {
+                    var file = data.files[0],
+                        oldVal = 0,
+                        newVal = 0;
 
-            // I have the file or files for this file upload, I am initiating upload
-            this.$input.bind('fileuploadadd', $.proxy(this.onFileuploadadd, this));
-            // I have initiated my upload and I am observing the progress of my upload object
-            this.$el.bind('fileuploadprogress', $.proxy(this.onFileuploadprogress, this));
-            this.$el.bind('fileuploadprogressall', $.proxy(this.onFileuploadprogressall, this));
+                    var $item = self.$uploadedItems.find('[data-fileupload-itemid=' + file.uploadID + ']');
+                    var $itemProgressBar = $item.find('.progress');
 
-            // uploads are completed
-            this.$el.bind('fileuploaddone', $.proxy(this.onFileuploaddone, this));
-            this.$el.bind('fileuploadfail', $.proxy(this.onFileuploadfail, this));
-        },
+                    newVal = Number(data.loaded / data.total * 100);
 
-        onFileuploadadd: function(e, data) {
-            var self = this;
-            e.preventDefault();    // stop the plugin automatically submitting
-
-            if (self.counter >= 5) {
-                console.log('Maximum of 5 uploads per message');
-                return false;
-            }
-
-            // todo - bug with multi file uploads - need to recusively call plugin on each file to overcome stupid plugin
-            $.each(data.files, function(idx, file) {
-                self.counter++;
-                file.uploadID = self.counter;   // store an id so we can reference the item later
-
-                self.$input.fileupload('send', {files:file});
-
-                data.context = $($.proxy(self.renderItem, self, {
-                    file: file,
-                    data: data
-                }));
-            });
-        },
-
-        onFileuploadchange: function(e, data) {
-        },
-        onFileuploaddragover: function(e, data) {
-            $($.proxy(this.addDndClass, this));
-        },
-        onFileuploaddragleave: function(e, data) {
-            $($.proxy(this.removeDndClass, this));
-        },
-        onFileuploaddrop: function(e, data) {
-            $($.proxy(this.removeDndClass, this));
-        },
-
-        onFileuploadprogress: function(e, data) {
-            var file = data.files[0];
-            var oldVal = 0,
-                newVal = 0;
-
-            var $itemProgress = this.$preview.find('[data-fileupload-itemid=' + file.uploadID + ']').find('.item-progress');
-
-            newVal = Number(data.loaded / data.total * 100);
-
-            if (oldVal !== newVal) {
-                if (newVal > 1) {
-                    $itemProgress.text(Math.floor(newVal) - 1  + "%");
+                    if (oldVal !== newVal) {
+                        self.itemProgressHandler($itemProgressBar, Math.floor(newVal));
+                        oldVal = newVal;
+                    }
+                },
+                done: function(e, data) {
+                    var file = data.files[0];
+                    var $item = self.$uploadedItems.find('[data-fileupload-itemid=' + file.uploadID + ']');
+                    var $itemProgressBar = $item.find('.progress');
+                    self.itemProgressHandler($itemProgressBar, 'complete');
+                },
+                change: function() {},
+                dragover: function(e, data) {
+                    $($.proxy(self.addDndClass, self));
+                },
+                dragleave: function(e, data) {
+                    $($.proxy(self.removeDndClass, self));
+                },
+                drop: function(e, data) {
+                    $($.proxy(self.removeDndClass, self));
                 }
-                oldVal = newVal;
+            }).prop('disabled', !$.support.fileInput);
+
+            return self;
+        },
+
+        validate: function(file) {
+            var self = this,
+                deferred = $.Deferred(),
+                message = null;
+
+            if (self.hasMaxFiles(self.model.length + 1)) {
+                message = 'There is a limit of ' + self.MAX_FILES + ' files per message. We can' +
+                ' only upload the first ' + self.MAX_FILES + ' files provided.';
+            } else if (self.hasMaxFileSize(file.size)) {
+                message = 'The file you are trying to upload is too large, try a smaller size. ' +
+                'Files must be under ' + this.formatFileSize(this.MAX_FILESIZE_BYTES);
+            } else {
+                message = '';
             }
+
+            if (message && message.length) {
+                deferred.reject(message);
+            } else {
+                deferred.resolve(file);
+            }
+
+            return deferred.promise();
+        },
+        /**
+         * Predicate for validating file count
+         * @param filesCount {Number}
+         * @returns {boolean}
+         */
+        hasMaxFiles: function(filesCount) {
+            return filesCount > this.MAX_FILES;
+        },
+        /**
+         * Predicate for validating file size
+         * @param fileSize {Number}
+         * @returns {boolean}
+         */
+        hasMaxFileSize: function(fileSize) {
+            return fileSize > this.MAX_FILESIZE_BYTES;
+        },
+        fileValidationErrorHandler: function(message) {
+            alert(message);
         },
 
-        onFileuploadprogressall: function(e, data) {
-            var progress = parseInt(data.loaded / data.total * 100, 10);
-            this.$globalProgressBar.text(progress + '%');
-            $(document).trigger('fileupload:complete')
+        initEvents: function() {
         },
 
-        onFileuploaddone: function(e, data) {
-            var file = data.files[0];
-            var $item = this.$preview.find('[data-fileupload-itemid=' + file.uploadID + ']');
-            var $itemProgress = $item.find('.item-progress');
-            $itemProgress.text('100%');
-        },
-
-        onFileuploadfail: function(e, data) {
-            var file = data.files[0];
-            var $item = this.$preview.find('[data-fileupload-itemid=' + file.uploadID + ']');
-            var $itemProgress = $item.find('.item-progress');
-            $itemProgress.text('Error');
-        },
-
-
-        renderItem: function(data) {
-            var file = data.file;
-            var jqueryObj = data.data;
+        renderItem: function(e, data) {
+            var file = data.files[0],
+                self = this;
 
             var $item = $('<div>', {
                 class: 'fileupload__preview__item',
                 'data-fileupload-itemid': file.uploadID
             }).append(
-                file.name +
-                '<div class=\"item-progress\"></div>' +
-                '<div class=\"item-icon\"></div>' +
-                '<div class=\"item-cancel\">Cancel</div>' +
-                '<div class=\"item-delete\">Delete</div>'
+                '<div class="name">' + file.name + ' ' + self.formatFileSize(file.size) +  '</div>' +
+                '<div class="progress"></div>' +
+                '<a class="message"></a>' +
+                '<a class="cancel">Cancel</a>' +
+                '<a class="delete">Delete</a>'
             );
 
-            $item.on('click', '.item-cancel', function() {
-                debugger;
-                jqueryObj.abort();
+            $item.on('click', '.cancel', function(e, data) {
+                console.log('cancel', file.uploadID);
+                self.model[file.uploadID].abort();
             });
 
-            $item.on('click', '.item-delete', function() {
-                $.ajax({
-                    url: self.deleteUrl + file.name,
+            $item.on('click', '.delete', function(e, data) {
+                console.log('delete', file.uploadID);
+                return $.ajax({
+                    url: self.deleteUrl + '/' + file.name,  // todo - string encoding
                     type: 'DELETE',
                     success: function() {
                         $(this).parent().remove();
@@ -177,7 +202,7 @@ $(function() {
                 });
             });
 
-            return this.$preview.append($item).append('<br>');
+            return this.$uploadedItems.append($item);
         },
 
         addDndClass: function() {
@@ -186,8 +211,32 @@ $(function() {
 
         removeDndClass: function() {
             this.$dndZone.removeClass('is-dragging');
-        }
+        },
 
+        /**
+         * @param $el {Object.<jQuery>} the item in scope's progress bar
+         * @param value {Number}
+         */
+        itemProgressHandler: function($el, value) {
+            if (typeof value === 'number') {
+                $el.text(value + "%");
+            } else {
+                $el.text(value);
+            }
+        },
+
+        formatFileSize: function(bytes) {
+            if (typeof bytes !== 'number') {
+                return '';
+            }
+            if (bytes >= 1000000000) {
+                return (bytes / 1000000000).toFixed(2) + ' GB';
+            }
+            if (bytes >= 1000000) {
+                return (bytes / 1000000).toFixed(2) + ' MB';
+            }
+            return (bytes / 1000).toFixed(2) + ' KB';
+        }
     };
 
     $(document).on('ready', function construct() {
@@ -197,7 +246,5 @@ $(function() {
             });
         }
     })
-
-
 }());
 
