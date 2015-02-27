@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title><%= title %></title>
+
+	<script src="/scripts/libs/jquery-1.7.1.js"></script>
+	<!-- The jQuery UI widget factory, can be omitted if jQuery UI is already included -->
+	<script src="/scripts/libs/jquery.ui.widget.js"></script>
+	<!-- The Iframe Transport is required for browsers without support for XHR file uploads -->
+	<script src="/scripts/libs/jquery.iframe-transport.js"></script>
+	<!-- The basic File Upload plugin -->
+	<script src="/scripts/libs/jquery.fileupload.js"></script>
+	<script src="/scripts/libs/jquery.fileupload-process.js"></script>
+
+	<link rel="stylesheet" href="/styles/jquery.fileupload.css">
+	<!--<link rel="stylesheet" href="/styles/jquery.fileupload-ui.css">-->
+	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.2.0/css/bootstrap.min.css">
+
+	<!--<script src="/scripts/file-upload.js"></script>-->
+	<!--<script src="/scripts/hip_fileupload.js"></script>-->
+	<script src="/scripts/hip_fileupload2.js"></script>
+</head>
+<body>
+
+	<h2><%= title %></h2>
+	<%- include partials/component.ejs %>
+
+</body>
+</html>

@@ -1,0 +1,32 @@
+<style>
+	.fileupload__dnd-zone {
+		border: 4px solid blue;
+		width: 200px;
+		height: 200px;
+	}
+	.fileupload__dnd-zone.is-dragging {
+		border-color: green;
+	}
+	.item-progress {
+		border: 1px solid red;
+		height: 20px;
+	}
+	.fileupload__preview__item {
+		background: yellow;
+		border: 1px solid red;
+		margin-bottom: 20px;
+	}
+
+</style>
+
+<div data-fileupload>
+	<div class="fileupload__dnd-zone" data-fileupload-dnd></div>
+
+	<div data-fileupload-input>
+		Attach files <input type="file" multiple>
+	</div>
+
+	<div data-fileupload-preview></div>
+
+</div>
+
